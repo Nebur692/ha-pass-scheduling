@@ -70,6 +70,27 @@ additive restrictions and scheduling features, not a rewrite of the trust bounda
 Admin access works through the HA sidebar — no separate login needed. Guest links use the direct
 port (`http://<your-ha-ip>:5880/g/{slug}`) so visitors don't need HA accounts.
 
+#### Unraid
+
+This is a standalone Docker container, not a Home Assistant Supervisor add-on — use this method if
+your Home Assistant runs as `homeassistant/home-assistant` (Core only, no Supervisor), which can't
+use the Add-on method above.
+
+1. **Docker → Add Container → scroll down → Template repositories**, add:
+
+   ```
+   https://raw.githubusercontent.com/Nebur692/ha-pass-invitations/main/ha-pass-invitations.xml
+   ```
+
+2. Save, then start a new **Add Container** again — pick **ha-pass-invitations** from the template
+   dropdown.
+3. Fill in `HA_BASE_URL`, `HA_TOKEN` and `ADMIN_PASSWORD` (required); the rest have sensible
+   defaults. See [Configuration](#configuration) below for what each variable does.
+4. Apply. The admin dashboard is at `http://<unraid-ip>:5880/admin/dashboard`.
+
+Not yet listed in the Community Applications search — the template repository step above works
+immediately regardless, without waiting on that.
+
 #### Docker Compose
 
 Pushing a `vX.Y.Z` tag to this repo triggers a GitHub Actions build that publishes to
@@ -211,6 +232,28 @@ reescritura del límite de confianza.
 El acceso de administrador funciona a través de la barra lateral de HA — no hace falta iniciar
 sesión aparte. Los enlaces de invitado usan el puerto directo
 (`http://<tu-ip-de-ha>:5880/g/{slug}`) para que los visitantes no necesiten cuenta de HA.
+
+#### Unraid
+
+Esto es un contenedor Docker independiente, no un complemento del Supervisor de Home Assistant —
+usa este método si tu Home Assistant corre como `homeassistant/home-assistant` (solo Core, sin
+Supervisor), que no puede usar el método de complemento de arriba.
+
+1. **Docker → Add Container → baja hasta Template repositories**, añade:
+
+   ```
+   https://raw.githubusercontent.com/Nebur692/ha-pass-invitations/main/ha-pass-invitations.xml
+   ```
+
+2. Guarda, y vuelve a pulsar **Add Container** — elige **ha-pass-invitations** en el desplegable de
+   plantillas.
+3. Rellena `HA_BASE_URL`, `HA_TOKEN` y `ADMIN_PASSWORD` (obligatorias); el resto ya trae valores por
+   defecto razonables. Consulta [Configuración](#configuración) más abajo para saber qué hace cada
+   variable.
+4. Aplica. El panel de administración queda en `http://<ip-de-unraid>:5880/admin/dashboard`.
+
+Todavía no aparece en el buscador de Community Applications — el paso de arriba (repositorio de
+plantillas) funciona ya mismo igualmente, sin depender de eso.
 
 #### Docker Compose
 
