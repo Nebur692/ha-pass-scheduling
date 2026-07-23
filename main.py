@@ -1,5 +1,6 @@
 """HAPass — FastAPI entry point."""
 import asyncio
+import json
 import logging
 import os
 import secrets
@@ -15,6 +16,7 @@ from app import database as db
 from app import ha_client
 from app.config import settings
 from app.context import base_context
+from app import i18n
 from app.ingress import get_ingress_path
 from app.models import NEVER_EXPIRES_SECONDS
 from app.rate_limiter import rate_limiter
@@ -165,11 +167,16 @@ async def root(request: Request):
 
 @app.get("/admin/dashboard", include_in_schema=False)
 async def admin_dashboard_page(request: Request):
+    lang = i18n.get_admin_lang(request)
     ctx = base_context(request)
     ctx.update({
         "never_expires": NEVER_EXPIRES_SECONDS,
         "is_ingress": bool(ctx["base_path"]),
         "guest_url": settings.guest_url,
+        "lang": lang,
+        "lang_is_auto": i18n.is_admin_lang_auto(request),
+        "t": i18n.make_t(i18n.ADMIN_STRINGS, lang),
+        "strings_json": json.dumps(i18n.ADMIN_STRINGS.get(lang, i18n.ADMIN_STRINGS[i18n.DEFAULT_LANG])),
     })
     return _templates.TemplateResponse(request, "admin_dashboard.html", ctx)
 

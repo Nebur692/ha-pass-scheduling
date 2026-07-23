@@ -170,6 +170,39 @@ async def test_create_token_never_expires(client, admin_session, mock_ha_client)
     assert row["expires_at"] == NEVER_EXPIRES_SECONDS
 
 
+async def test_create_token_with_max_uses_persists(client, admin_session, mock_ha_client):
+    resp = await client.post(
+        "/admin/tokens",
+        json={
+            "label": "Single use",
+            "entity_ids": ["light.a"],
+            "expires_in_seconds": 3600,
+            "max_uses": 1,
+        },
+        cookies=admin_session,
+    )
+    assert resp.status_code == 201
+    data = resp.json()
+    assert data["max_uses"] == 1
+    assert data["use_count"] == 0
+
+    row = await db.get_token_by_id(data["id"])
+    assert row["max_uses"] == 1
+    assert row["use_count"] == 0
+
+
+async def test_create_token_without_max_uses_is_unlimited(client, admin_session, mock_ha_client):
+    resp = await client.post(
+        "/admin/tokens",
+        json={"label": "Unlimited", "entity_ids": ["light.a"], "expires_in_seconds": 3600},
+        cookies=admin_session,
+    )
+    assert resp.status_code == 201
+    data = resp.json()
+    assert data["max_uses"] is None
+    assert data["use_count"] == 0
+
+
 async def test_create_token_duplicate_slug_409(client, admin_session, mock_ha_client):
     """Duplicate slugs are caught and return 409 with a meaningful message."""
     await client.post(
@@ -632,3 +665,62 @@ async def test_suggested_entities_single_category(client, admin_session, mock_ha
     data = resp.json()
     entity_ids = {e["entity_id"] for e in data}
     assert entity_ids == {"light.salon"}
+
+
+# ---------------------------------------------------------------------------
+# Profile language preference
+# ---------------------------------------------------------------------------
+
+async def test_set_language_requires_auth(client, mock_ha_client, test_db):
+    resp = await client.post("/admin/profile/language", json={"language": "es"})
+    assert resp.status_code == 401
+
+
+async def test_set_language_es_sets_cookie(client, admin_session, mock_ha_client):
+    resp = await client.post(
+        "/admin/profile/language", json={"language": "es"}, cookies=admin_session,
+    )
+    assert resp.status_code == 200
+    assert resp.json() == {"ok": True, "language": "es"}
+    assert resp.cookies.get("hp_admin_lang") == "es"
+
+
+async def test_set_language_auto_clears_cookie(client, admin_session, mock_ha_client):
+    # First set an explicit override, then clear it back to auto.
+    await client.post("/admin/profile/language", json={"language": "en"}, cookies=admin_session)
+    resp = await client.post(
+        "/admin/profile/language", json={"language": "auto"}, cookies=admin_session,
+    )
+    assert resp.status_code == 200
+    assert resp.json()["ok"] is True
+    # Cookie deletion is expressed as an immediately-expiring Set-Cookie header
+    assert "hp_admin_lang=" in resp.headers.get("set-cookie", "")
+
+
+async def test_set_language_invalid_value_rejected(client, admin_session, mock_ha_client):
+    resp = await client.post(
+        "/admin/profile/language", json={"language": "fr"}, cookies=admin_session,
+    )
+    assert resp.status_code == 422
+
+
+async def test_dashboard_respects_language_cookie(client, admin_session, mock_ha_client):
+    await client.post("/admin/profile/language", json={"language": "es"}, cookies=admin_session)
+    resp = await client.get("/admin/dashboard")
+    assert resp.status_code == 200
+    assert 'lang="es"' in resp.text
+    assert "Iniciar sesión" in resp.text
+
+
+async def test_dashboard_defaults_to_english_without_accept_language(client, mock_ha_client, test_db):
+    resp = await client.get("/admin/dashboard")
+    assert resp.status_code == 200
+    assert 'lang="en"' in resp.text
+    assert "Sign in" in resp.text
+
+
+async def test_dashboard_auto_detects_spanish_from_accept_language(client, mock_ha_client, test_db):
+    resp = await client.get("/admin/dashboard", headers={"Accept-Language": "es-ES,es;q=0.9"})
+    assert resp.status_code == 200
+    assert 'lang="es"' in resp.text
+    assert "Iniciar sesión" in resp.text

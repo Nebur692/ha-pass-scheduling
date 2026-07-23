@@ -51,6 +51,11 @@ class AdminLoginRequest(BaseModel):
     password: str
 
 
+class AdminLanguageRequest(BaseModel):
+    # "auto" clears the override and falls back to Accept-Language detection.
+    language: str = Field(..., pattern=r"^(auto|en|es)$")
+
+
 class RecurrenceSchedule(BaseModel):
     """A recurring weekly access window, e.g. every Tue/Thu 09:00-13:00.
 
@@ -86,6 +91,10 @@ class TokenCreateRequest(BaseModel):
     # Automatic delivery of the guest link via an HA notify.* service.
     notify_service: str | None = Field(default=None, pattern=r"^notify\.[a-z0-9_]+$")
     notify_lead_seconds: int | None = Field(default=None, ge=0)
+    # Single/limited-use: None means unlimited (today's behavior). When set,
+    # the link stops working once use_count reaches max_uses — see
+    # app.routers.guest.TokenState.USED_UP.
+    max_uses: int | None = Field(default=None, ge=1)
 
     @model_validator(mode="after")
     def _validate_schedule(self):
@@ -132,6 +141,8 @@ class TokenResponse(BaseModel):
     notify_service: str | None = None
     notify_lead_seconds: int | None = None
     bound_claimed_at: int | None = None
+    max_uses: int | None = None
+    use_count: int = 0
 
 
 class SuggestedEntity(BaseModel):

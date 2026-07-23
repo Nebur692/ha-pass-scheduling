@@ -11,9 +11,11 @@ from app import database as db
 from app.auth import INGRESS_SENTINEL, SESSION_COOKIE, require_admin, verify_password
 from app.config import settings
 from app import ha_client
+from app import i18n
 from app.models import (
     ACCESS_DOMAINS,
     ACCESS_KEYWORDS,
+    AdminLanguageRequest,
     AdminLoginRequest,
     LIGHT_DOMAINS,
     LIGHT_KEYWORDS,
@@ -85,6 +87,39 @@ async def logout(response: Response, session_id: str = Depends(require_admin)) -
 
 
 # ---------------------------------------------------------------------------
+# Admin profile
+# ---------------------------------------------------------------------------
+
+# Cookie persists the manual language override for ~1 year — "auto" clears it.
+ADMIN_LANG_COOKIE_MAX_AGE = 31536000
+
+
+@router.post("/profile/language")
+async def set_admin_language(
+    body: AdminLanguageRequest,
+    request: Request,
+    response: Response,
+    _: str = Depends(require_admin),
+) -> dict:
+    if body.language == "auto":
+        response.delete_cookie(i18n.ADMIN_LANG_COOKIE)
+        resolved = i18n.detect_lang(request.headers.get("accept-language"))
+    else:
+        forwarded_proto = (request.headers.get("x-forwarded-proto") or "").split(",")[0].strip()
+        is_https = request.url.scheme == "https" or forwarded_proto == "https"
+        response.set_cookie(
+            i18n.ADMIN_LANG_COOKIE,
+            body.language,
+            httponly=True,
+            samesite="strict",
+            secure=is_https,
+            max_age=ADMIN_LANG_COOKIE_MAX_AGE,
+        )
+        resolved = body.language
+    return {"ok": True, "language": resolved}
+
+
+# ---------------------------------------------------------------------------
 # Token management
 # ---------------------------------------------------------------------------
 
@@ -115,6 +150,8 @@ def _row_to_response(row: Any, entity_ids: list[str] | None = None) -> dict:
         "notify_service": row["notify_service"] if "notify_service" in row.keys() else None,
         "notify_lead_seconds": row["notify_lead_seconds"] if "notify_lead_seconds" in row.keys() else None,
         "bound_claimed_at": row["bound_claimed_at"] if "bound_claimed_at" in row.keys() else None,
+        "max_uses": row["max_uses"] if "max_uses" in row.keys() else None,
+        "use_count": row["use_count"] if "use_count" in row.keys() else 0,
     }
 
 
@@ -191,6 +228,7 @@ async def create_token(
         recurrence=body.recurrence.model_dump() if body.recurrence else None,
         notify_service=body.notify_service,
         notify_lead_seconds=body.notify_lead_seconds,
+        max_uses=body.max_uses,
     )
     entity_ids = await db.get_token_entities(row["id"])
     return _row_to_response(row, entity_ids)

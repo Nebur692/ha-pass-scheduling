@@ -30,6 +30,7 @@ from app import database as db
 from app import ha_client
 from app.config import settings
 from app.context import base_context
+from app import i18n
 from app.models import (
     ALLOWED_SERVICES,
     CommandRequest,
@@ -77,6 +78,14 @@ templates = Jinja2Templates(directory="templates")
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+def _guest_i18n_ctx(request: Request) -> dict:
+    lang = i18n.get_guest_lang(request)
+    return {
+        "lang": lang,
+        "t": i18n.make_t(i18n.GUEST_STRINGS, lang),
+        "strings_json": json.dumps(i18n.GUEST_STRINGS.get(lang, i18n.GUEST_STRINGS[i18n.DEFAULT_LANG])),
+    }
 
 def _client_ip(request: Request) -> str:
     """Extract the client IP from X-Forwarded-For (set by reverse proxy).
@@ -133,6 +142,7 @@ class TokenState(str, Enum):
     ACTIVE = "active"
     GONE = "gone"                     # not found / revoked / past expires_at
     NOT_YET_ACTIVE = "not_yet_active"  # before starts_at, or outside today's recurrence window
+    USED_UP = "used_up"               # max_uses reached — distinct from GONE for guest messaging
 
 
 def _within_recurrence(recurrence: dict, now: int) -> bool:
@@ -146,12 +156,21 @@ def _within_recurrence(recurrence: dict, now: int) -> bool:
 def _token_state(row, now: int) -> TokenState:
     if row["revoked"] or row["expires_at"] <= now:
         return TokenState.GONE
+    if row["max_uses"] is not None and row["use_count"] >= row["max_uses"]:
+        return TokenState.USED_UP
     if row["starts_at"] is not None and row["starts_at"] > now:
         return TokenState.NOT_YET_ACTIVE
     if row["recurrence"]:
         if not _within_recurrence(json.loads(row["recurrence"]), now):
             return TokenState.NOT_YET_ACTIVE
     return TokenState.ACTIVE
+
+
+def _gone_reason(row) -> str:
+    """Distinguishes why a token is gone, for guest-facing messaging."""
+    if row is not None and row["revoked"]:
+        return "revoked"
+    return "expired"
 
 
 def _next_available_at(row, now: int) -> int | None:
@@ -245,6 +264,8 @@ async def _validate_token(slug: str, request: Request):
     state = _token_state(row, now)
     if state is TokenState.GONE:
         raise HTTPException(status_code=status.HTTP_410_GONE, detail="Access unavailable")
+    if state is TokenState.USED_UP:
+        raise HTTPException(status_code=status.HTTP_410_GONE, detail="Access already used")
     if state is TokenState.NOT_YET_ACTIVE:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access not yet active")
 
@@ -335,7 +356,14 @@ async def guest_pwa(background_tasks: BackgroundTasks, request: Request, slug: s
 
     if state is TokenState.GONE:
         ctx = base_context(request)
-        ctx.update({"slug": slug, "contact_message": settings.contact_message})
+        ctx.update(_guest_i18n_ctx(request))
+        ctx.update({"slug": slug, "contact_message": settings.contact_message, "reason": _gone_reason(row)})
+        return templates.TemplateResponse(request, "expired.html", ctx, status_code=410)
+
+    if state is TokenState.USED_UP:
+        ctx = base_context(request)
+        ctx.update(_guest_i18n_ctx(request))
+        ctx.update({"slug": slug, "contact_message": settings.contact_message, "reason": "used_up"})
         return templates.TemplateResponse(request, "expired.html", ctx, status_code=410)
 
     try:
@@ -343,11 +371,13 @@ async def guest_pwa(background_tasks: BackgroundTasks, request: Request, slug: s
         new_binding_secret = await _verify_or_claim_binding(row, request)
     except HTTPException as exc:
         ctx = base_context(request)
-        ctx.update({"slug": slug, "contact_message": settings.contact_message})
+        ctx.update(_guest_i18n_ctx(request))
+        ctx.update({"slug": slug, "contact_message": settings.contact_message, "reason": "expired"})
         return templates.TemplateResponse(request, "expired.html", ctx, status_code=exc.status_code)
 
     if state is TokenState.NOT_YET_ACTIVE:
         ctx = base_context(request)
+        ctx.update(_guest_i18n_ctx(request))
         ctx.update({
             "slug": slug,
             "label": row["label"],
@@ -370,6 +400,7 @@ async def guest_pwa(background_tasks: BackgroundTasks, request: Request, slug: s
     if new_binding_secret:
         _schedule_activity_event(background_tasks, _activity_payload(row, "first_use"))
     ctx = base_context(request)
+    ctx.update(_guest_i18n_ctx(request))
     ctx.update({
         "slug": slug,
         "label": row["label"],
@@ -549,6 +580,9 @@ async def guest_command(
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Service call failed")
     except Exception:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Service call failed")
+
+    if row["max_uses"] is not None:
+        await db.increment_token_use_count(token_id)
 
     await db.log_access(
         token_id=token_id,

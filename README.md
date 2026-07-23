@@ -47,6 +47,15 @@ future date/time, or a recurring weekly window), while staying self-hosted and a
   signed, `HttpOnly`/`SameSite=Strict` cookie scoped to that one link); any other device that opens
   the same link afterwards is refused, so a guest can't casually forward the link onward. An
   "Unbind" action in the admin UI releases the claim (e.g. the guest changed phones).
+- **Single-use links** — an optional "Single use" checkbox makes a link stop working after the
+  guest's first action (opening a door, pressing a button...), on top of (or instead of) a normal
+  expiry. Complements the pre-existing "Never expires" option for the opposite case — a permanent
+  link, revoked by hand.
+- **Bilingual English/Spanish UI** — both the admin dashboard and the guest PWA are fully
+  translated. The guest PWA always auto-detects from the guest's own browser language. The admin
+  dashboard also auto-detects by default, but can be pinned to a specific language from its
+  Profile menu regardless of the browser — useful if the admin's browser is in a language they
+  don't want the dashboard rendered in.
 
 None of the above touches the original security model: the same entity/service allowlist,
 forbidden-key stripping, rate limiting, and IP allowlisting from upstream still apply — these are
@@ -206,6 +215,16 @@ semanal recurrente), manteniéndolo autoalojado y auditable.
   enlace concreto); cualquier otro dispositivo que abra después el mismo enlace queda rechazado,
   así el invitado no puede reenviarlo sin más. Una acción "Desvincular" en el panel de
   administración libera la reclamación (p.ej. si el invitado cambia de móvil).
+- **Enlaces de un solo uso** — una casilla opcional "Un solo uso" hace que el enlace deje de
+  funcionar tras la primera acción del invitado (abrir una puerta, pulsar un botón...), además de
+  (o en vez de) una caducidad normal. Complementa la opción ya existente "No caduca nunca" para el
+  caso contrario — un enlace permanente, revocado a mano.
+- **Interfaz bilingüe español/inglés** — tanto el panel de administración como la PWA del invitado
+  están completamente traducidos. La PWA del invitado siempre detecta automáticamente el idioma
+  del navegador del invitado. El panel de administración también lo detecta automáticamente por
+  defecto, pero se puede fijar a un idioma concreto desde su menú de Perfil sin depender del
+  navegador — útil si el navegador del administrador está en un idioma en el que no quiere ver el
+  panel.
 
 Nada de lo anterior toca el modelo de seguridad original: la misma lista blanca de entidad/
 servicio, el filtrado de claves prohibidas, el rate limiting y la lista blanca de IP de la versión

@@ -923,3 +923,60 @@ async def test_unbind_allows_a_new_device_to_claim(client, sample_token, mock_ha
         assert resp2.status_code == 200
         row = await db.get_token_by_id(sample_token["id"])
         assert row["bound_secret"] is not None
+
+
+# ---------------------------------------------------------------------------
+# Single-use tokens (max_uses)
+# ---------------------------------------------------------------------------
+
+async def test_single_use_token_works_once(client, mock_ha_client, test_db):
+    now = int(time.time())
+    token = await db.create_token(
+        label="Single use", slug="single-use-tok", entity_ids=["light.a"],
+        expires_at=now + 3600, ip_allowlist=None, max_uses=1,
+    )
+    resp = await client.post(
+        "/g/single-use-tok/command",
+        json={"entity_id": "light.a", "service": "turn_on"},
+    )
+    assert resp.status_code == 200
+    mock_ha_client["call_service"].assert_called_once()
+    row = await db.get_token_by_id(token["id"])
+    assert row["use_count"] == 1
+
+
+async def test_single_use_token_blocked_after_first_use(client, mock_ha_client, test_db):
+    now = int(time.time())
+    token = await db.create_token(
+        label="Single use", slug="single-use-tok2", entity_ids=["light.a"],
+        expires_at=now + 3600, ip_allowlist=None, max_uses=1,
+    )
+    resp1 = await client.post(
+        "/g/single-use-tok2/command",
+        json={"entity_id": "light.a", "service": "turn_on"},
+    )
+    assert resp1.status_code == 200
+
+    resp2 = await client.post(
+        "/g/single-use-tok2/command",
+        json={"entity_id": "light.a", "service": "turn_on"},
+    )
+    assert resp2.status_code == 410
+    assert resp2.json()["detail"] == "Access already used"
+    mock_ha_client["call_service"].assert_called_once()  # only the first call went through
+
+    resp3 = await client.get("/g/single-use-tok2")
+    assert resp3.status_code == 410
+    assert "already used" in resp3.text.lower() or "ya se ha utilizado" in resp3.text.lower()
+
+
+async def test_unlimited_use_token_unaffected_by_max_uses_logic(client, sample_token, mock_ha_client):
+    """sample_token has max_uses=None — repeated commands must keep working."""
+    for _ in range(3):
+        resp = await client.post(
+            f"/g/{sample_token['slug']}/command",
+            json={"entity_id": "light.living_room", "service": "turn_on"},
+        )
+        assert resp.status_code == 200
+    row = await db.get_token_by_id(sample_token["id"])
+    assert row["use_count"] == 0  # never incremented when max_uses is None

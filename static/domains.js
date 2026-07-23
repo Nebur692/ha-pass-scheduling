@@ -6,6 +6,18 @@ const DOMAIN_LABELS = {
   lock: 'Locks', button: 'Buttons', input_button: 'Buttons', media_player: 'Media', cover: 'Covers', fan: 'Fans',
   sensor: 'Sensors', binary_sensor: 'Binary Sensors',
 };
+const DOMAIN_LABELS_ES = {
+  light: 'Luces', switch: 'Interruptores', input_boolean: 'Interruptores', climate: 'Climatización',
+  lock: 'Cerraduras', button: 'Botones', input_button: 'Botones', media_player: 'Multimedia', cover: 'Toldos/Persianas', fan: 'Ventiladores',
+  sensor: 'Sensores', binary_sensor: 'Sensores binarios',
+};
+// LANG is a global set by each page's own inline script (admin_dashboard.html /
+// guest_pwa.html), always defined by the time this is actually called even
+// though domains.js itself loads first — it's only read lazily, at call time.
+function domainLabel(domain) {
+  const table = (typeof LANG !== 'undefined' && LANG === 'es') ? DOMAIN_LABELS_ES : DOMAIN_LABELS;
+  return table[domain];
+}
 const DOMAIN_ICONS = {
   light: 'lightbulb', switch: 'toggle_on', input_boolean: 'toggle_on', climate: 'thermostat',
   lock: 'lock', button: 'smart_button', input_button: 'smart_button', media_player: 'speaker', cover: 'blinds', fan: 'mode_fan',

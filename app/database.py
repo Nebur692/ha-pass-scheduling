@@ -99,6 +99,7 @@ async def create_token(
     recurrence: dict | None = None,
     notify_service: str | None = None,
     notify_lead_seconds: int | None = None,
+    max_uses: int | None = None,
 ) -> dict[str, Any]:
     db = await get_db()
     token_id = str(uuid.uuid4())
@@ -114,10 +115,10 @@ async def create_token(
         await db.execute(
             """INSERT INTO tokens
                (id, slug, label, created_at, expires_at, ip_allowlist,
-                starts_at, recurrence, notify_service, notify_lead_seconds)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                starts_at, recurrence, notify_service, notify_lead_seconds, max_uses)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (token_id, slug, label, now, expires_at, ip_json,
-             starts_at, recurrence_json, notify_service, notify_lead_seconds),
+             starts_at, recurrence_json, notify_service, notify_lead_seconds, max_uses),
         )
         if entity_ids:
             await db.executemany(
@@ -269,6 +270,15 @@ async def delete_token(token_id: str) -> None:
     # failures on databases where the ON DELETE SET NULL clause is missing.
     await db.execute("UPDATE access_log SET token_id = NULL WHERE token_id = ?", (token_id,))
     await db.execute("DELETE FROM tokens WHERE id = ?", (token_id,))
+    await db.commit()
+
+
+async def increment_token_use_count(token_id: str) -> None:
+    db = await get_db()
+    await db.execute(
+        "UPDATE tokens SET use_count = use_count + 1 WHERE id = ?",
+        (token_id,),
+    )
     await db.commit()
 
 
